@@ -25,6 +25,11 @@ void UBGUserWidget::NativeDestruct()
 	}
 }
 
+void UBGUserWidget::ChangeTurnUI(bool bIsOn)
+{
+	EditableTextBox_ChatInput->SetIsEnabled(bIsOn);
+}
+
 void UBGUserWidget::OnChatInputTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
 	if (CommitMethod == ETextCommit::OnEnter)

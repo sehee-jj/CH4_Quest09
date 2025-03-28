@@ -29,6 +29,7 @@ void ABGPlayerController::BeginPlay()
 		if (IsValid(ChatInputWidgetInstance) == true)
 		{
 			ChatInputWidgetInstance->AddToViewport();
+			ChatInputWidgetInstance->ChangeTurnUI(false);
 		}
 	}
 
@@ -63,7 +64,21 @@ void ABGPlayerController::GetLifetimeReplicatedProps(TArray<class FLifetimePrope
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(ThisClass, NotificationText)
+	DOREPLIFETIME(ThisClass, NotificationText);
+	DOREPLIFETIME(ThisClass, TimerText);
+	DOREPLIFETIME(ThisClass, ChanceText);
+}
+
+void ABGPlayerController::ClientRPCChangeTurn_Implementation(bool bIsOn)
+{
+	if (IsValid(NotificationTextWidgetInstance) == true)
+	{
+		ChatInputWidgetInstance->ChangeTurnUI(bIsOn);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No instance"));
+	}
 }
 
 void ABGPlayerController::ClientRPCPrintChatMessageString_Implementation(const FString& InChatMessageString)

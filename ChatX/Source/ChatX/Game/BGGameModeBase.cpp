@@ -5,6 +5,7 @@
 #include "Game/BGGameStateBase.h"
 #include "Player/BGPlayerController.h"
 #include "Player/BGPlayerState.h"
+#include "UI/BGUserWidget.h"
 #include "EngineUtils.h"
 
 void ABGGameModeBase::OnPostLogin(AController* NewPlayer)
@@ -14,13 +15,16 @@ void ABGGameModeBase::OnPostLogin(AController* NewPlayer)
 	ABGPlayerController* BGPlayerController = Cast<ABGPlayerController>(NewPlayer);
 	if (IsValid(BGPlayerController) == true)
 	{
-		BGPlayerController->NotificationText = FText::FromString(TEXT("Connected to Game server!"));
 		AllPlayerControllers.Add(BGPlayerController);
+		BGPlayerController->NotificationText = FText::FromString(TEXT("Wating Player..."));
+		BGPlayerController->TimerText = FText::FromString(FString::Printf(TEXT("%d"), (int32)LimitTimeAmount));
+		BGPlayerController->ClientRPCChangeTurn(false);
 
 		ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
 		if (IsValid(BGPS) == true)
 		{
 			BGPS->PlayerName = TEXT("Player") + FString::FromInt(AllPlayerControllers.Num());
+			BGPlayerController->ChanceText = FText::FromString(FString::Printf(TEXT("%d"), BGPS->GetRemainChanceCnt()));
 		}
 
 		ABGGameStateBase* BGGameStateBase = GetGameState<ABGGameStateBase>();
@@ -35,7 +39,7 @@ void ABGGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ServerNumString = GetRandNum();
+	GetWorldTimerManager().SetTimer(StartDelayTimerHandler, this, &ABGGameModeBase::StartGame, 3.f, true);
 }
 
 void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlayerController, const FString& InChatMessageString)
@@ -51,7 +55,8 @@ void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlay
 		ResultMessageString += GuessResult;
 
 		IncreaseChanceCnt(InChattingPlayerController);
-		JudgeGame(InChattingPlayerController, GuessResult);
+		ChangTurn();
+		JudgeInputGame(InChattingPlayerController, GuessResult);
 	}
 	else
 	{
@@ -63,6 +68,8 @@ void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlay
 	{
 		ResultMessageString = BGPS->GetPlayerInfoString() + TEXT(": ") + ResultMessageString;
 	}
+
+	ResultMessageString += FString::Printf(TEXT("  ServerNum: %s"), *ServerNumString);
 	
 	for (TActorIterator<ABGPlayerController> It(GetWorld()); It; ++It)
 	{
@@ -70,18 +77,27 @@ void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlay
 		if (IsValid(BGPlayerController) == true)
 		{
 			BGPlayerController->ClientRPCPrintChatMessageString(ResultMessageString);
+
 		}
 	}
 }
 
 FString ABGGameModeBase::GetRandNum()
 {
-	int32 Num = 0;
-	for (int32 i = 0; i < 3; i++)
+	FString RandNum = "";
+	TArray<bool> InputNum;
+	InputNum.Init(false, 10);
+	while (RandNum.Len() < 3)
 	{
-		Num += FMath::Pow(10.f, i) * FMath::RandRange(1, 9);
+		int32 SelectNum = FMath::RandRange(1, 9);
+		if (!InputNum[SelectNum])
+		{
+			RandNum += FString::FromInt(SelectNum);
+			InputNum[SelectNum] = true;
+		}
 	}
-	return FString::FromInt(Num);
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *RandNum);
+	return RandNum;
 }
 
 FString ABGGameModeBase::EvaluateGuess(FString ServerNum, FString PlayerNum)
@@ -154,9 +170,21 @@ void ABGGameModeBase::IncreaseChanceCnt(ABGPlayerController* InChattingPlayerCon
 	}
 }
 
+void ABGGameModeBase::StartGame()
+{
+	if (AllPlayerControllers.Num() > 1)
+	{
+		GetWorldTimerManager().ClearTimer(StartDelayTimerHandler);
+
+		ServerNumString = GetRandNum();
+
+		ChangTurn();
+	}
+}
+
 void ABGGameModeBase::RestartGame()
 {
-	ServerNumString = GetRandNum();
+	CurrTurnIdx = 0;
 
 	for (const auto& BGPlayerController : AllPlayerControllers)
 	{
@@ -168,10 +196,19 @@ void ABGGameModeBase::RestartGame()
 		}
 	}
 
-
+	StartGame();
 }
 
-void ABGGameModeBase::JudgeGame(ABGPlayerController* InChattingPlayerController, FString GuessResult)
+void ABGGameModeBase::ChangTurn()
+{
+	ResetTimer();
+	JudgeTurn();
+
+	GetWorldTimerManager().SetTimer(TurnTimerHandler, this, &ABGGameModeBase::JudgeTurn, LimitTimeAmount, true);
+	GetWorldTimerManager().SetTimer(TimeLimitHandler, this, &ABGGameModeBase::CountTime, 1.f, true);
+}
+
+void ABGGameModeBase::JudgeInputGame(ABGPlayerController* InChattingPlayerController, FString GuessResult)
 {
 	if (GuessResult == TEXT("3S0B"))
 	{
@@ -183,33 +220,93 @@ void ABGGameModeBase::JudgeGame(ABGPlayerController* InChattingPlayerController,
 			for (const auto& BGPlayerController : AllPlayerControllers)
 			{
 				BGPlayerController->NotificationText = FText::FromString(GameResult);
-				RestartGame();
+				ResetTimer();
+				GetWorldTimerManager().SetTimer(NotifyTimerHandler, this, &ABGGameModeBase::RestartGame, 3.f, false);
 			}
 		}
 	}
 	else
 	{
-		bool bIsDraw = false;
-		for (const auto& BGPlayerController : AllPlayerControllers)
-		{
-			ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
-			if (IsValid(BGPS) == true)
-			{
-				if (BGPS->CurrChanceCnt > BGPS->MaxChanceCnt)
-				{
-					bIsDraw = true;
-					break;
-				}
-			}
-		}
-
-		if (bIsDraw)
+		if (IsFinishGame())
 		{
 			for (const auto& BGPlayerController : AllPlayerControllers)
 			{
 				BGPlayerController->NotificationText = FText::FromString(TEXT("Draw!!"));
-				GetWorldTimerManager().SetTimer(NotifyTimer, this, &ABGGameModeBase::RestartGame, 3.f, false);
+				ResetTimer();
+				GetWorldTimerManager().SetTimer(NotifyTimerHandler, this, &ABGGameModeBase::RestartGame, 3.f, false);
 			}
 		}
 	}
+}
+
+bool ABGGameModeBase::IsFinishGame()
+{
+	for (const auto& BGPlayerController : AllPlayerControllers)
+	{
+		ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
+		if (IsValid(BGPS) == true)
+		{
+			if (BGPS->GetRemainChanceCnt()!=0)
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+void ABGGameModeBase::JudgeTurn()
+{
+	int32 PreTurnIdx = CurrTurnIdx;
+	if(AllPlayerControllers.IsValidIndex(PreTurnIdx))
+	{
+		auto PC = AllPlayerControllers[PreTurnIdx];
+		if(LimitTimeAmount<=0)
+		{
+			IncreaseChanceCnt(PC);
+		}
+		LimitTimeAmount = MaxLimitTimeAmount;
+		if (IsFinishGame())
+		{
+			for (const auto& BGPlayerController : AllPlayerControllers)
+			{
+				BGPlayerController->NotificationText = FText::FromString(TEXT("Draw!!"));
+				ResetTimer();
+				GetWorldTimerManager().SetTimer(NotifyTimerHandler, this, &ABGGameModeBase::RestartGame, 3.f, false);
+				return;
+			}
+		}
+		PC->ClientRPCChangeTurn(false);
+	}
+	CurrTurnIdx = (CurrTurnIdx + 1) % AllPlayerControllers.Num();
+
+	for (const auto& BGPlayerController : AllPlayerControllers)
+	{
+		ABGPlayerState* BGPS = BGPlayerController->GetPlayerState<ABGPlayerState>();
+		BGPlayerController->ChanceText = FText::FromString(FString::Printf(TEXT("%d"), BGPS->GetRemainChanceCnt()));
+		if (BGPlayerController == AllPlayerControllers[CurrTurnIdx])
+		{
+			AllPlayerControllers[CurrTurnIdx]->NotificationText = FText::FromString(TEXT("It's Your Turn!!"));
+			BGPlayerController->ClientRPCChangeTurn(true);
+		}
+		else
+		{
+			BGPlayerController->NotificationText = FText::FromString(TEXT("Waitng Your Turn..."));
+		}
+	}
+}
+
+void ABGGameModeBase::CountTime()
+{
+	--LimitTimeAmount;
+	for (const auto& BGPlayerController : AllPlayerControllers)
+	{
+		BGPlayerController->TimerText = FText::FromString(FString::Printf(TEXT("%d"), (int32)LimitTimeAmount));
+	}
+}
+
+void ABGGameModeBase::ResetTimer()
+{
+	GetWorldTimerManager().ClearTimer(TurnTimerHandler);
+	GetWorldTimerManager().ClearTimer(TimeLimitHandler);
 }

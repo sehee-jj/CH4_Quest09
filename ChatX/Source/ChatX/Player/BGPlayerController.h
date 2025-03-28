@@ -30,6 +30,9 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
+	UFUNCTION(Client, Reliable)
+	void ClientRPCChangeTurn(bool bIsOn);
+
 protected:
 	UPROPERTY(EditDefaultsOnly)
 	TSubclassOf<UBGUserWidget> ChatInputWidgetClass;
@@ -48,4 +51,10 @@ protected:
 public:
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	FText NotificationText;
+
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	FText TimerText;
+
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	FText ChanceText;
 };

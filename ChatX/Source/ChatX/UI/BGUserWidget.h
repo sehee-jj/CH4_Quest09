@@ -21,6 +21,8 @@ public:
 
 	virtual void NativeDestruct() override;
 
+	void ChangeTurnUI(bool bIsOn);
+
 protected:
 	UFUNCTION()
 	void OnChatInputTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);

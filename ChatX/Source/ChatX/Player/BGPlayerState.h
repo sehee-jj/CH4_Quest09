@@ -21,6 +21,8 @@ public:
 
 	FString GetPlayerInfoString();
 
+	int32 GetRemainChanceCnt();
+
 public:
 	UPROPERTY(Replicated)
 	FString PlayerName;

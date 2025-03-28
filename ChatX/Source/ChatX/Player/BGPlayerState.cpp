@@ -26,3 +26,8 @@ FString ABGPlayerState::GetPlayerInfoString()
 
 	return PlayerInfoString;
 }
+
+int32 ABGPlayerState::GetRemainChanceCnt()
+{
+	return MaxChanceCnt-CurrChanceCnt;
+}
