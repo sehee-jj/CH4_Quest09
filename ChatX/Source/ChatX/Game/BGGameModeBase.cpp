@@ -42,8 +42,6 @@ void ABGGameModeBase::PrintChatMessageString(ABGPlayerController* InChattingPlay
 {
 	bool bIsValidInput = false;
 	FString PlayerInput = InChatMessageString;
-	/*TArray<FString> PlayerInput;
-	InChatMessageString.ParseIntoArray(PlayerInput, TEXT(" "));*/
 	FString ResultMessageString = TEXT(" ⇨ ");
 
 	if (IsValidInput(PlayerInput))
